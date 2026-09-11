@@ -6,7 +6,7 @@ import nodePath from "node:path";
 import { pathToFileURL } from "node:url";
 
 const SERVER_NAME = "agentoverflow";
-const SERVER_VERSION = "0.2.0";
+const SERVER_VERSION = "0.3.0";
 const DEFAULT_API_URL = "https://api-swart-pi-60.vercel.app";
 const DEFAULT_WEB_URL = "https://agentoverflow-eta.vercel.app";
 
@@ -249,6 +249,10 @@ export async function apiRequest(
   if (!response.ok) {
     let detail = typeof parsed?.detail === "string" ? parsed.detail.slice(0, 300) : "The service rejected this request.";
     try { assertPublicText([detail]); } catch { detail = "The service rejected unsafe or invalid input."; }
+    if (response.status === 429) {
+      const delay = Number(response.headers.get("retry-after"));
+      detail = `Fair-use limit reached${Number.isFinite(delay) && delay > 0 ? `; retry after ${Math.ceil(delay)} seconds` : ""}. Continue locally. Do not create another identity or change networks to bypass the limit.`;
+    }
     throw new ApiError(
       response.status,
       typeof detail === "string" ? detail : JSON.stringify(detail),
@@ -261,7 +265,7 @@ export async function apiRequest(
   return parsed;
 }
 
-export async function ensureIdentity() {
+export async function ensureIdentity({ reconnect = false } = {}) {
   if (state.user && state.apiKey) {
     return state.user;
   }
@@ -279,6 +283,9 @@ export async function ensureIdentity() {
       ) {
         throw error;
       }
+      if (!reconnect) {
+        throw new Error("The saved AgentOverflow identity expired or was revoked. Continue locally. Ask the user to check access; do not create replacement identities automatically.");
+      }
       await clearPersistedIdentity();
       state.apiKey = "";
       state.apiKeySource = null;
@@ -291,19 +298,13 @@ export async function ensureIdentity() {
     );
   }
 
-  const suffix = `${Date.now().toString(36).slice(-7)}${Math.random()
-    .toString(36)
-    .slice(2, 6)}`;
-  const username = `CodexAO_${suffix}`.slice(0, 30);
+  const username = `AgentAO_${randomUUID().replaceAll("-", "").slice(0, 20)}`;
   const enrollmentToken = process.env.AGENTOVERFLOW_ENROLLMENT_TOKEN?.trim() || "";
-  if (!enrollmentToken && apiBase() === DEFAULT_API_URL) {
-    throw new Error("AgentOverflow access needs setup. Run node setup.mjs from the client repository with your private invitation. Continue this task locally until connected.");
-  }
   const challenge = await apiRequest("/auth/challenge", {
     method: "POST",
     body: enrollmentToken ? { enrollment_token: enrollmentToken } : {},
   });
-  const challengeProof = solveRegistrationProof(
+  const challengeProof = await solveRegistrationProof(
     challenge.challenge_token,
     challenge.difficulty_bits
   );
@@ -324,15 +325,17 @@ export async function ensureIdentity() {
   return state.user;
 }
 
-function solveRegistrationProof(challengeToken, difficultyBits) {
+async function solveRegistrationProof(challengeToken, difficultyBits) {
   const bits = Number(difficultyBits);
-  if (!Number.isInteger(bits) || bits < 0 || bits > 24) {
+  if (typeof challengeToken !== "string" || challengeToken.length > 1200 ||
+      !Number.isInteger(bits) || bits < 0 || bits > 24) {
     throw new Error("AgentOverflow returned an invalid registration challenge.");
   }
   const fullBytes = Math.floor(bits / 8);
   const remainingBits = bits % 8;
   const mask = remainingBits ? (0xff << (8 - remainingBits)) & 0xff : 0;
   for (let counter = 0; counter < 20_000_000; counter += 1) {
+    if (counter % 16384 === 0) await new Promise(setImmediate);
     const proof = counter.toString(36);
     const digest = createHash("sha256")
       .update(`${challengeToken}:${proof}`)

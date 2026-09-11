@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, mkdtemp, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import os from "node:os";
+import path from "node:path";
 
 delete process.env.AGENTOVERFLOW_API_KEY;
 const { assertPublicText, apiBase, apiRequest } = await import("../plugins/agentoverflow/mcp/server.mjs");
@@ -38,6 +40,7 @@ test("bounded transport refuses redirects, oversized responses, and error reflec
     else if (req.url === "/large") res.end("a".repeat(131073));
     else if (req.url === "/secret-error") { res.writeHead(422); res.end(JSON.stringify({ detail: "password=abcdefghijklmnop" })); }
     else if (req.url === "/html") res.end("<html>unexpected page</html>");
+    else if (req.url === "/limited") { res.writeHead(429, { "Retry-After": "60" }); res.end(JSON.stringify({ detail: "Limited" })); }
     else res.end(JSON.stringify({ ok: true }));
   });
   server.listen(0, "127.0.0.1");
@@ -50,10 +53,71 @@ test("bounded transport refuses redirects, oversized responses, and error reflec
     await assert.rejects(apiRequest("/html"), /invalid response/);
     await assert.rejects(apiRequest("/success", { method: "POST", body: { text: "a".repeat(65536) } }), /too large/);
     await assert.rejects(apiRequest("/secret-error"), (error) => !error.message.includes("abcdefghijklmnop"));
+    await assert.rejects(apiRequest("/limited"), /retry after 60 seconds.*Continue locally/);
   } finally {
     delete process.env.AGENTOVERFLOW_API_URL;
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("public setup needs no invitation, persists identity, and does not silently replace rejected access", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "agentoverflow-client-test-"));
+  const identity = { id: "public_test_identity", username: "TestAgent" };
+  const key = "ao_local_test_credential_0123456789";
+  let registrations = 0;
+  let rejected = false;
+  let unexpectedRoute = false;
+  const server = createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+    res.setHeader("Content-Type", "application/json");
+    if (req.url === "/auth/challenge") {
+      assert.equal(body.enrollment_token, undefined);
+      res.end(JSON.stringify({ challenge_token: "t".repeat(80), difficulty_bits: 0, registration_mode: "self_service" }));
+    } else if (req.url === "/auth/register") {
+      registrations++;
+      assert.equal(body.enrollment_token, undefined);
+      res.end(JSON.stringify({ api_key: key, user: identity }));
+    } else if (req.url === "/users/me") {
+      assert.equal(req.headers.authorization, `Bearer ${key}`);
+      res.statusCode = rejected ? 401 : 200;
+      res.end(JSON.stringify(rejected ? { detail: "Invalid API key" } : identity));
+    } else {
+      unexpectedRoute = true;
+      res.writeHead(404); res.end("{}");
+    }
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const environment = {
+    ...process.env, AGENTOVERFLOW_API_URL: `http://127.0.0.1:${server.address().port}`,
+    AGENTOVERFLOW_CREDENTIALS_FILE: path.join(temporary, "credentials.json"),
+  };
+  delete environment.AGENTOVERFLOW_API_KEY;
+  delete environment.AGENTOVERFLOW_ENROLLMENT_TOKEN;
+  async function setup(...args) {
+    const child = spawn(process.execPath, [fileURLToPath(new URL("../setup.mjs", import.meta.url)), ...args], { env: environment, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    let output = "";
+    child.stdout.on("data", chunk => { output += chunk; });
+    child.stderr.on("data", chunk => { output += chunk; });
+    const [code] = await once(child, "close");
+    assert.ok(!output.includes(key), "Credential was printed");
+    return { code, output };
+  }
+  try {
+    assert.equal((await setup("--connect-only")).code, 0);
+    assert.equal((await setup("--check")).code, 0);
+    assert.equal(registrations, 1);
+    rejected = true;
+    assert.equal((await setup("--connect-only")).code, 1);
+    assert.equal(registrations, 1, "Rejected identity was silently replaced");
+    assert.equal(unexpectedRoute, false, "Setup uploaded work or called an unrelated endpoint");
+  } finally {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+    await rm(temporary, { recursive: true, force: true });
   }
 });
 

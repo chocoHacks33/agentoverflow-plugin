@@ -1,0 +1,20 @@
+name: Connection or setup issue
+description: Report a problem installing or using AgentOverflow.
+title: "Connection issue: "
+body:
+  - type: markdown
+    attributes:
+      value: "No invitation is required. This issue is public: never include credentials, private source, or retrieved execution recipes."
+  - type: input
+    id: environment
+    attributes:
+      label: Operating system and Node.js version
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include the setup step and a sanitized error message.
+    validations:
+      required: true

@@ -6,36 +6,6 @@ import { ensureIdentity } from "./plugins/agentoverflow/mcp/server.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 
-function invitation() {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    throw new Error("Run setup in your own interactive terminal. Never paste an invitation into an agent chat.");
-  }
-  process.stdout.write("Private invitation (input hidden): ");
-  return new Promise((resolve, reject) => {
-    let value = "";
-    const wasRaw = process.stdin.isRaw;
-    const finish = (error) => {
-      process.stdin.setRawMode(wasRaw);
-      process.stdin.pause();
-      process.stdin.removeListener("data", onData);
-      process.stdout.write("\n");
-      if (error) reject(error); else resolve(value.trim());
-    };
-    const onData = (data) => {
-      for (const character of data.toString("utf8")) {
-        if (character === "\u0003") return finish(new Error("Setup cancelled."));
-        if (character === "\r" || character === "\n") return finish();
-        if (character === "\u007f" || character === "\b") value = value.slice(0, -1);
-        else if (character >= " " && character <= "~") value += character;
-        if (value.length > 4096) return finish(new Error("Invalid invitation length."));
-      }
-    };
-    process.stdin.setRawMode(true);
-    process.stdin.resume();
-    process.stdin.on("data", onData);
-  });
-}
-
 function addMarketplace() {
   const candidates = process.platform === "win32"
     ? [path.join(process.env.LOCALAPPDATA || "", "OpenAI", "Codex", "bin", "codex.exe"),
@@ -58,25 +28,16 @@ function addMarketplace() {
 
 async function main() {
   if (Number(process.versions.node.split(".")[0]) < 22) throw new Error("Install Node.js 22 or newer, then run setup again.");
-  if (process.argv.slice(2).some((arg) => arg !== "--check")) throw new Error("Usage: node setup.mjs [--check]");
-  console.log("AgentOverflow | shared execution memory for Codex\n");
-  process.env.AGENTOVERFLOW_AUTO_REGISTER = "false";
-  try {
-    await ensureIdentity();
-  } catch (error) {
-    if (process.argv.includes("--check")) throw error;
-    if (process.env.AGENTOVERFLOW_API_KEY) throw new Error("The configured identity was rejected. Remove the AGENTOVERFLOW_API_KEY override before reconnecting with an invitation.");
-    if (error.status && ![401, 403, 404].includes(error.status)) throw error;
-    if (/unavailable|integrity|match this service/i.test(error.message)) throw error;
-    console.log("Access is invitation-only. Setup does not upload your work or accept contribution terms.");
-    process.env.AGENTOVERFLOW_ENROLLMENT_TOKEN = await invitation();
-    if (!process.env.AGENTOVERFLOW_ENROLLMENT_TOKEN) throw new Error("No invitation entered. Request access from the repository maintainer.");
-    process.env.AGENTOVERFLOW_AUTO_REGISTER = "true";
-    try { await ensureIdentity(); }
-    finally { delete process.env.AGENTOVERFLOW_ENROLLMENT_TOKEN; }
+  if (process.argv.slice(2).some((arg) => !["--check", "--connect-only", "--reconnect"].includes(arg))) {
+    throw new Error("Usage: node setup.mjs [--check | --connect-only | --reconnect]");
   }
-  console.log("Service connection verified. Credentials stay on this device; never commit or share them.");
-  if (process.argv.includes("--check")) return;
+  console.log("AgentOverflow | shared execution memory for coding agents\n");
+  process.env.AGENTOVERFLOW_AUTO_REGISTER = process.argv.includes("--check") ? "false" : "true";
+  console.log("Connecting this device. No invitation or manually supplied API key is needed.");
+  console.log("Setup does not upload your work or accept contribution terms.");
+  await ensureIdentity({ reconnect: process.argv.includes("--reconnect") && !process.argv.includes("--check") });
+  console.log("Connected. Your device credential stays local; never commit or share it.");
+  if (process.argv.includes("--check") || process.argv.includes("--connect-only")) return;
   addMarketplace();
   console.log("Open Codex > Plugins, find AgentOverflow, and install/enable it. Start a new task.");
   console.log("Disable any older AgentOverflow installation to avoid duplicate tools.");
