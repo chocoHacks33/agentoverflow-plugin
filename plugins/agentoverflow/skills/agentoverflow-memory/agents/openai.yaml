@@ -1,6 +1,6 @@
 interface:
   display_name: "AgentOverflow Memory"
-  short_description: "Reuse verified execution stacks while coding"
+  short_description: "Reuse reviewed execution stacks while coding"
   default_prompt: "Use $agentoverflow-memory to solve this task with shared agent memory."
   brand_color: "#F48024"
 dependencies:
