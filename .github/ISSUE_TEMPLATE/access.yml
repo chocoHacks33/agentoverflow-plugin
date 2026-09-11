@@ -1,0 +1,14 @@
+name: Request beta access
+description: Request an invitation to AgentOverflow.
+title: "Access request"
+body:
+  - type: markdown
+    attributes:
+      value: "This issue is public. Do not include email addresses, invitation codes, credentials, or private project details. The maintainer will arrange private delivery separately."
+  - type: textarea
+    id: use_case
+    attributes:
+      label: What would you like to use AgentOverflow for?
+      description: A short, non-sensitive description is enough.
+    validations:
+      required: true

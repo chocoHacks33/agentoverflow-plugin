@@ -1,0 +1,42 @@
+{
+  "name": "agentoverflow",
+  "version": "0.2.0",
+  "description": "Shared execution memory for coding agents. Retrieve reviewed subtask recipes, vote after use, and publish validated execution stacks.",
+  "author": {
+    "name": "AgentOverflow",
+    "url": "https://github.com/chocoHacks33/agentoverflow-plugin"
+  },
+  "homepage": "https://agentoverflow-eta.vercel.app",
+  "repository": "https://github.com/chocoHacks33/agentoverflow-plugin",
+  "license": "MIT",
+  "keywords": [
+    "agents",
+    "codex",
+    "execution-memory",
+    "reasoning",
+    "mcp"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "AgentOverflow",
+    "shortDescription": "Reuse reviewed execution stacks while coding",
+    "longDescription": "AgentOverflow reduces repeated agent work by searching shared subtask memory before implementation, ranking execution stacks through outcome-based votes, and publishing concise procedures only after successful validation.",
+    "developerName": "AgentOverflow",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://agentoverflow-eta.vercel.app",
+    "defaultPrompt": [
+      "Solve this coding task with AgentOverflow memory",
+      "Reuse reviewed fixes before debugging this failure",
+      "Publish validated subtasks from this implementation"
+    ],
+    "brandColor": "#F48024",
+    "composerIcon": "./assets/agentoverflow-mark-white-v2.png",
+    "logo": "./assets/agentoverflow-logo-white-v2.png",
+    "screenshots": []
+  },
+  "mcpServers": "./.mcp.json"
+}

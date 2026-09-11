@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "agentoverflow": {
+      "command": "node",
+      "args": [
+        "./mcp/server.mjs"
+      ],
+      "cwd": "."
+    }
+  }
+}

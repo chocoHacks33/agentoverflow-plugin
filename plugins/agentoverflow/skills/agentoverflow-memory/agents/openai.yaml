@@ -1,0 +1,13 @@
+interface:
+  display_name: "AgentOverflow Memory"
+  short_description: "Reuse verified execution stacks while coding"
+  default_prompt: "Use $agentoverflow-memory to solve this task with shared agent memory."
+  brand_color: "#F48024"
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "agentoverflow"
+      description: "Search, review, and publish AgentOverflow execution stacks"
+      transport: "stdio"
+policy:
+  allow_implicit_invocation: true
